@@ -430,6 +430,142 @@
       50% { height: 12px; }
     }
 
+    /* Floating Vinyl Turntable Player */
+    .vinyl-widget {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 45;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px 6px 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.84);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(232, 143, 161, 0.38);
+      box-shadow: 0 10px 28px rgba(120, 62, 78, 0.14);
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .vinyl-widget:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 32px rgba(120, 62, 78, 0.2);
+    }
+
+    .vinyl-stage {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      flex-shrink: 0;
+    }
+
+    .vinyl-disc {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at center,
+          var(--accent) 0 16%,
+          #ffffff 16% 19%,
+          #2a1e23 19% 21%,
+          #1d1518 21% 38%,
+          #2e2227 39% 40%,
+          #1a1316 41% 62%,
+          #2d2126 63% 64%,
+          #171114 65% 96%,
+          #4a3840 97% 100%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 4px 10px rgba(0,0,0,0.22);
+      animation: vinylSpin 6.5s linear infinite;
+      animation-play-state: paused;
+      position: relative;
+    }
+
+    .vinyl-disc::after {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      background: conic-gradient(from 25deg, rgba(255,255,255,0.22) 0deg 28deg, transparent 55deg 180deg, rgba(255,255,255,0.16) 200deg 225deg, transparent 255deg 360deg);
+      pointer-events: none;
+    }
+
+    .vinyl-widget.is-playing .vinyl-disc {
+      animation-play-state: running;
+    }
+
+    @keyframes vinylSpin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .vinyl-arm {
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      width: 18px;
+      height: 28px;
+      transform-origin: 13px 5px;
+      transform: rotate(-18deg);
+      transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+      pointer-events: none;
+    }
+
+    .vinyl-widget.is-playing .vinyl-arm {
+      transform: rotate(12deg);
+    }
+
+    .vinyl-notes {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .vinyl-note {
+      position: absolute;
+      left: 16px;
+      top: 4px;
+      font-size: 13px;
+      color: var(--accent-deep);
+      opacity: 0;
+    }
+
+    .vinyl-widget.is-playing .vinyl-note-1 {
+      animation: noteFloat1 2.8s ease-out infinite;
+    }
+
+    .vinyl-widget.is-playing .vinyl-note-2 {
+      animation: noteFloat2 3.2s ease-out infinite 1.2s;
+    }
+
+    @keyframes noteFloat1 {
+      0% { opacity: 0; transform: translate(0, 4px) scale(0.75) rotate(-8deg); }
+      25% { opacity: 0.9; }
+      100% { opacity: 0; transform: translate(-12px, -34px) scale(1.08) rotate(14deg); }
+    }
+
+    @keyframes noteFloat2 {
+      0% { opacity: 0; transform: translate(6px, 4px) scale(0.7) rotate(6deg); }
+      25% { opacity: 0.85; }
+      100% { opacity: 0; transform: translate(16px, -38px) scale(1.05) rotate(-14deg); }
+    }
+
+    @media (max-width: 640px) {
+      .vinyl-widget {
+        right: 12px;
+        bottom: 12px;
+        padding: 5px 10px 5px 5px;
+      }
+      .vinyl-stage, .vinyl-disc {
+        width: 42px;
+        height: 42px;
+      }
+    }
+
     /* Polaroid gallery cards */
     .polaroid-card {
       transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
@@ -659,14 +795,6 @@
         <button type="button" data-theme-btn="apricot" title="Tulip Kem Nắng" class="theme-dot w-5 h-5 rounded-full bg-[#f0a278] ring-offset-2 ring-[#d98a5f] transition-transform hover:scale-110" aria-pressed="false"></button>
         <button type="button" data-theme-btn="lavender" title="Tulip Tím Mơ" class="theme-dot w-5 h-5 rounded-full bg-[#b495cf] ring-offset-2 ring-[#9b7cb8] transition-transform hover:scale-110" aria-pressed="false"></button>
       </div>
-
-      <!-- Gentle Piano Ballad Toggle -->
-      <button id="music-toggle" type="button" class="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[36px] px-2.5 sm:px-3.5 py-2 sm:py-1.5 rounded-full bg-white/85 hover:bg-white border border-stone-200/80 shadow-sm text-[11px] sm:text-xs font-medium text-stone-700 transition-all active:scale-95 whitespace-nowrap">
-        <span class="music-bars" aria-hidden="true">
-          <span></span><span></span><span></span>
-        </span>
-        <span id="music-label">Bật nhạc nền nhẹ</span>
-      </button>
 
       <!-- Jump to Photo Album -->
       <a href="#photo-album" class="flex-1 sm:flex-none inline-flex items-center justify-center min-h-[40px] sm:min-h-[36px] px-3 py-2 sm:py-1.5 rounded-full text-xs font-medium bg-white/85 hover:bg-white text-stone-700 border border-stone-200/80 shadow-sm transition-all active:scale-95">
@@ -1140,6 +1268,26 @@
   <div id="toast" class="toast-banner fixed bottom-5 left-1/2 -translate-x-1/2 translate-y-16 opacity-0 z-50 px-4 py-2.5 rounded-full bg-stone-800/90 text-white text-xs sm:text-sm shadow-lg pointer-events-none">
     Đã lưu!
   </div>
+
+  <!-- Floating Vinyl Turntable Player -->
+  <button id="vinyl-player" type="button" class="vinyl-widget" title="Thanh Xuân · Da LAB (Nhấn để tạm dừng/phát)" aria-label="Trình phát nhạc đĩa than Thanh Xuân">
+    <span class="vinyl-stage" aria-hidden="true">
+      <span class="vinyl-disc"></span>
+      <svg class="vinyl-arm" viewBox="0 0 20 30" fill="none">
+        <circle cx="14" cy="5" r="3.2" fill="#e7c7ce" stroke="#8e5766" stroke-width="1.2"/>
+        <path d="M14 7.5 L11.5 21 L8.5 25.5" stroke="#8e5766" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="8.5" cy="25.5" r="1.7" fill="#4a2c35"/>
+      </svg>
+      <span class="vinyl-notes">
+        <span class="vinyl-note vinyl-note-1">♪</span>
+        <span class="vinyl-note vinyl-note-2">♫</span>
+      </span>
+    </span>
+    <span class="text-left leading-tight pr-0.5">
+      <span class="block text-[11px] font-semibold text-stone-800">Thanh Xuân</span>
+      <span id="vinyl-status" class="block text-[10px] text-stone-500">Da LAB · Đang phát</span>
+    </span>
+  </button>
 
   <audio id="bg-music" src="./nhac.mp3" preload="auto" loop playsinline></audio>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -2236,8 +2384,8 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
       let musicInterval = null;
       let stepIndex = 0;
 
-      const musicToggleBtn = document.getElementById('music-toggle');
-      const musicLabel = document.getElementById('music-label');
+      const vinylPlayerBtn = document.getElementById('vinyl-player');
+      const vinylStatusEl = document.getElementById('vinyl-status');
 
       const BALLAD_STEPS = [
         { bass: [146.83, 220.0], melody: 587.33 },
@@ -2379,12 +2527,11 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
 
       function setMusicUI(playing) {
         musicPlaying = playing;
-        if (playing) {
-          musicToggleBtn.classList.add('music-playing', 'ring-2', 'ring-rose-200');
-          musicLabel.textContent = 'Đang phát: Thanh Xuân';
-        } else {
-          musicToggleBtn.classList.remove('music-playing', 'ring-2', 'ring-rose-200');
-          musicLabel.textContent = 'Bật nhạc nền';
+        if (vinylPlayerBtn) {
+          vinylPlayerBtn.classList.toggle('is-playing', playing);
+        }
+        if (vinylStatusEl) {
+          vinylStatusEl.textContent = playing ? 'Da LAB · Đang phát ♪' : 'Chạm để nghe nhạc';
         }
       }
 
@@ -2435,7 +2582,7 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         });
       }
 
-      musicToggleBtn.addEventListener('click', (e) => {
+      vinylPlayerBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         unlockMobileAudio();
         if (musicPlaying) {
@@ -2448,7 +2595,7 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
 
       // Tự động phát nhạc mượt khi vào trang; nếu trình duyệt chặn autoplay thì tự bật ngay lần chạm đầu tiên
       function removeFirstInteractionListeners() {
-        ['pointerdown', 'touchstart', 'click', 'keydown'].forEach((evt) => {
+        ['pointerdown', 'touchstart', 'click', 'keydown', 'scroll'].forEach((evt) => {
           window.removeEventListener(evt, onFirstInteraction, true);
         });
       }
@@ -2458,7 +2605,7 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
           removeFirstInteractionListeners();
           return;
         }
-        if (e && e.target && e.target.closest && e.target.closest('#music-toggle')) {
+        if (e && e.target && e.target.closest && e.target.closest('#vinyl-player')) {
           removeFirstInteractionListeners();
           return;
         }
@@ -2466,7 +2613,7 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         if (ok) removeFirstInteractionListeners();
       }
 
-      ['pointerdown', 'touchstart', 'click', 'keydown'].forEach((evt) => {
+      ['pointerdown', 'touchstart', 'click', 'keydown', 'scroll'].forEach((evt) => {
         window.addEventListener(evt, onFirstInteraction, { capture: true, passive: true });
       });
 
