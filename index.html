@@ -1347,6 +1347,12 @@
     <p class="font-serif-display text-base italic text-stone-700">“A good teacher can inspire hope, ignite the imagination, and instill a love of learning.”</p>
     <p class="mt-1.5">Gửi tặng riêng Cô Võ Thị Thu Huyền · Nhân ngày Nhà giáo Việt Nam 20/11</p>
     <p class="mt-1.5 font-medium text-stone-600">Made with <span style="color: var(--accent-deep);">♥</span> by Trần Minh Hiếu</p>
+    <div class="mt-3">
+      <button id="admin-mode-btn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] text-stone-400 hover:text-stone-600 bg-white/60 hover:bg-white border border-stone-200/70 transition-colors">
+        <span>🔒</span>
+        <span id="admin-mode-label">Quản trị xóa ảnh</span>
+      </button>
+    </div>
   </footer>
 
   <!-- LETTER CUSTOMIZER MODAL -->
@@ -1526,6 +1532,9 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         typeof window.supabase.createClient === 'function'
       );
       const db = CLOUD_ENABLED ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+      let adminPin = '';
+      try { adminPin = sessionStorage.getItem('co_huyen_admin_pin') || ''; } catch (_) {}
+      const isAdminMode = () => Boolean(adminPin && adminPin.length >= 4);
 
       const STORAGE_KEYS = {
         letter: 'co_huyen_2011_letter_v2',
@@ -2155,7 +2164,7 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
                     <span>${w.likes}</span>
                   </button>
 
-                  ${(!CLOUD_ENABLED || state.myWishIds[w.id]) ? `<button type="button" data-delete-id="${w.id}" class="text-stone-400 hover:text-stone-600 transition-colors" title="Xóa bức thư bạn vừa gửi">Xóa</button>` : '<span></span>'}
+                  ${(!CLOUD_ENABLED || state.myWishIds[w.id] || isAdminMode()) ? `<button type="button" data-delete-id="${w.id}" class="text-stone-400 hover:text-stone-600 transition-colors" title="Xóa bức thư bạn vừa gửi">Xóa</button>` : '<span></span>'}
                 </div>
               </article>
             `;
@@ -2212,15 +2221,29 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         const delBtn = e.target.closest('[data-delete-id]');
         if (delBtn) {
           const id = delBtn.getAttribute('data-delete-id');
+          if (isAdminMode() && !confirm('Xóa vĩnh viễn bức thư này khỏi web?')) return;
           const token = typeof state.myWishIds[id] === 'string' ? state.myWishIds[id] : '';
           state.wishes = state.wishes.filter((w) => w.id !== id);
           delete state.myWishIds[id];
           try { localStorage.setItem(STORAGE_KEYS.myWishIds, JSON.stringify(state.myWishIds)); } catch (_) {}
           saveWishesSafe();
           renderClassWishes();
-          showToast('Đã xóa bức thư.');
-          if (CLOUD_ENABLED && db && token && !Number.isNaN(Number(id))) {
-            db.rpc('delete_own_wish', { p_wish_id: Number(id), p_token: token }).catch(() => {});
+          if (CLOUD_ENABLED && db && !Number.isNaN(Number(id))) {
+            if (isAdminMode()) {
+              db.rpc('admin_delete_wish', { p_wish_id: Number(id), p_pin: adminPin }).then(({ data, error }) => {
+                if (error || data !== true) {
+                  showToast('Sai mã PIN quản trị hoặc chưa chạy SQL admin!');
+                  syncFromCloud(true);
+                } else {
+                  showToast('Đã xóa vĩnh viễn bức thư khỏi máy chủ!');
+                }
+              });
+            } else if (token) {
+              showToast('Đã xóa bức thư.');
+              db.rpc('delete_own_wish', { p_wish_id: Number(id), p_token: token }).catch(() => {});
+            }
+          } else {
+            showToast('Đã xóa bức thư.');
           }
         }
       });
@@ -2340,20 +2363,21 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
                 </svg>
               </div>`;
 
-          const canDelete = item.isExtra && state.myAlbumIds[item.id];
+          const isMine = Boolean(item.isExtra && state.myAlbumIds[item.id]);
+          const canDelete = item.isExtra && (isMine || isAdminMode());
           const deleteBadge = canDelete
-            ? `<span data-delete-album-id="${item.id}" role="button" tabindex="0" title="Xóa ảnh bạn vừa đăng" class="absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-full bg-stone-900/70 hover:bg-stone-900 text-white text-xs flex items-center justify-center">×</span>`
+            ? `<button type="button" data-delete-album-id="${item.id}" title="${isMine ? 'Xóa ảnh bạn đã đăng' : 'Xóa ảnh này (Quản trị)'}" class="absolute top-3.5 right-3.5 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${isAdminMode() && !isMine ? 'bg-rose-600/90 hover:bg-rose-700' : 'bg-stone-900/75 hover:bg-rose-600'} text-white text-[11px] font-medium shadow-md backdrop-blur-xs transition-colors"><span>✕</span><span>Xóa</span></button>`
             : '';
 
           return `
-            <button type="button" data-album-index="${idx}" class="polaroid-card group relative bg-white p-2.5 pb-3 rounded-xl border border-stone-200/80 shadow-sm focus:outline-none text-left" aria-label="Xem ảnh kỷ niệm số ${idx + 1}">
+            <div role="button" tabindex="0" data-album-index="${idx}" class="polaroid-card group relative bg-white p-2.5 pb-3 rounded-xl border border-stone-200/80 shadow-sm focus:outline-none text-left cursor-pointer" aria-label="Xem ảnh kỷ niệm số ${idx + 1}">
               <span class="absolute -top-1.5 left-1/2 -translate-x-1/2 w-10 h-3 rounded-sm opacity-75 pointer-events-none" style="background: var(--accent-light);"></span>
               ${deleteBadge}
               <div class="w-full aspect-[4/3] rounded-lg overflow-hidden bg-stone-100">
                 <img src="${item.src}" alt="${escapeHtml(item.caption)}" loading="lazy" class="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105 block" />
               </div>
               ${footerHtml}
-            </button>
+            </div>
           `;
         }).join('');
       }
@@ -2363,15 +2387,35 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         if (delBtn) {
           e.stopPropagation();
           const id = delBtn.getAttribute('data-delete-album-id');
+          if (!confirm('Bạn có chắc muốn xóa tấm ảnh này khỏi Album lớp không?')) return;
           const token = typeof state.myAlbumIds[id] === 'string' ? state.myAlbumIds[id] : '';
           state.extraAlbum = state.extraAlbum.filter((item) => item.id !== id);
           delete state.myAlbumIds[id];
           try { localStorage.setItem(STORAGE_KEYS.myAlbumIds, JSON.stringify(state.myAlbumIds)); } catch (_) {}
           saveExtraAlbumSafe();
           renderAlbum();
-          showToast('Đã xóa ảnh khỏi Album.');
-          if (CLOUD_ENABLED && db && token && !Number.isNaN(Number(id))) {
-            db.rpc('delete_own_album', { p_photo_id: Number(id), p_token: token }).catch(() => {});
+          if (CLOUD_ENABLED && db && !Number.isNaN(Number(id))) {
+            if (isAdminMode()) {
+              db.rpc('admin_delete_album', { p_photo_id: Number(id), p_pin: adminPin }).then(({ data, error }) => {
+                if (error || data !== true) {
+                  showToast('Sai mã PIN quản trị hoặc chưa chạy SQL admin!');
+                  syncFromCloud(true);
+                } else {
+                  showToast('Đã xóa vĩnh viễn ảnh khỏi Album lớp!');
+                }
+              });
+            } else if (token) {
+              db.rpc('delete_own_album', { p_photo_id: Number(id), p_token: token }).then(({ data, error }) => {
+                if (error || data !== true) {
+                  showToast('Không thể xóa ảnh trên máy chủ, thử lại sau nhé!');
+                  syncFromCloud(true);
+                } else {
+                  showToast('Đã xóa tấm ảnh của bạn khỏi Album lớp!');
+                }
+              });
+            }
+          } else {
+            showToast('Đã xóa ảnh khỏi Album.');
           }
           return;
         }
@@ -2962,17 +3006,26 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         }
       });
 
-      // ================== FLOATING TULIP PETALS CANVAS ==================
+      // ================== FLOATING TULIP PETALS & ORBITING BUTTERFLIES CANVAS ==================
       const canvas = document.getElementById('petal-canvas');
       const ctx = canvas.getContext('2d');
       let petals = [];
+      let butterflies = [];
+      let sparkles = [];
       let animId = null;
 
       function getThemePetalColors() {
-        if (state.theme === 'apricot') return ['#f7c5a8', '#f0a278', '#fce2d2', '#f5d0b5'];
-        if (state.theme === 'lavender') return ['#d7c4eb', '#b495cf', '#eadff5', '#c8b0e0'];
-        return ['#f7c6d0', '#e88fa1', '#fbe0e6', '#f2aebc'];
+        if (state.theme === 'apricot') return ['#f7c5a8', '#f0a278', '#fce2d2', '#f3b38c', '#e68c60'];
+        if (state.theme === 'lavender') return ['#d7c4eb', '#b495cf', '#eadff5', '#c8b0e0', '#9f7ec0'];
+        return ['#f7c6d0', '#e88fa1', '#fbe0e6', '#f2aebc', '#df768c'];
       }
+
+      const BUTTERFLY_PALETTES = [
+        { upper: '#e88fa1', lower: '#f9c6d0', accent: '#c96479' },
+        { upper: '#f0a278', lower: '#fcd5bd', accent: '#cf774c' },
+        { upper: '#b495cf', lower: '#e2d2f0', accent: '#8c6bac' },
+        { upper: '#f2b880', lower: '#fde4c4', accent: '#d49052' }
+      ];
 
       let canvasCssW = window.innerWidth;
       let canvasCssH = window.innerHeight;
@@ -2991,24 +3044,53 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         const colors = getThemePetalColors();
         return {
           x: x ?? Math.random() * canvasCssW,
-          y: y ?? -20 - Math.random() * canvasCssH * 0.6,
-          size: burst ? 6 + Math.random() * 7 : 7 + Math.random() * 8,
-          vx: burst ? (Math.random() - 0.5) * 4.2 : (Math.random() - 0.35) * 0.65,
-          vy: burst ? -2.2 - Math.random() * 2.8 : 0.45 + Math.random() * 0.75,
+          y: y ?? -24 - Math.random() * canvasCssH * 0.6,
+          size: burst ? 7 + Math.random() * 7 : 8 + Math.random() * 9,
+          vx: burst ? (Math.random() - 0.5) * 4.4 : (Math.random() - 0.35) * 0.72,
+          vy: burst ? -2.2 - Math.random() * 2.8 : 0.58 + Math.random() * 0.9,
           gravity: burst ? 0.065 : 0,
           rot: Math.random() * Math.PI * 2,
-          vRot: (Math.random() - 0.5) * 0.035,
+          vRot: (Math.random() - 0.5) * 0.038,
+          tiltPhase: Math.random() * Math.PI * 2,
+          tiltSpeed: 0.025 + Math.random() * 0.03,
           swayPhase: Math.random() * Math.PI * 2,
-          swaySpeed: 0.015 + Math.random() * 0.02,
-          alpha: burst ? 0.95 : 0.42 + Math.random() * 0.32,
+          swaySpeed: 0.016 + Math.random() * 0.022,
+          alpha: burst ? 0.96 : 0.54 + Math.random() * 0.34,
           color: colors[Math.floor(Math.random() * colors.length)],
           burst
         };
       }
 
+      function createButterfly(idx, total) {
+        const pal = BUTTERFLY_PALETTES[idx % BUTTERFLY_PALETTES.length];
+        const cx = canvasCssW * (0.18 + 0.64 * ((idx + 0.5) / total));
+        const cy = canvasCssH * (0.2 + 0.6 * Math.random());
+        const rx = Math.min(canvasCssW * 0.32, 130 + Math.random() * 170);
+        const ry = Math.min(canvasCssH * 0.26, 95 + Math.random() * 130);
+        const phase = Math.random() * Math.PI * 2;
+        return {
+          cx,
+          cy,
+          rx,
+          ry,
+          phase,
+          speedX: (0.0045 + Math.random() * 0.0038) * (idx % 2 === 0 ? 1 : -1),
+          speedY: 0.0065 + Math.random() * 0.0045,
+          phaseY: Math.random() * Math.PI * 2,
+          x: cx + Math.cos(phase) * rx,
+          y: cy + Math.sin(phase) * ry,
+          angle: 0,
+          wingPhase: Math.random() * Math.PI * 2,
+          wingSpeed: 0.22 + Math.random() * 0.08,
+          size: 9.5 + Math.random() * 4.5,
+          palette: pal,
+          sparkleTick: Math.floor(Math.random() * 18)
+        };
+      }
+
       function burstPetals(x, y, count) {
         if (prefersReducedMotion) return;
-        const maxPetals = canvasCssW < 640 ? 55 : 90;
+        const maxPetals = canvasCssW < 640 ? 70 : 120;
         const allowed = Math.max(0, Math.min(count, maxPetals - petals.length));
         for (let i = 0; i < allowed; i++) {
           petals.push(createPetal(x, y, true));
@@ -3017,13 +3099,19 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
 
       function initPetals() {
         petals = [];
+        butterflies = [];
+        sparkles = [];
         if (prefersReducedMotion) return;
         const isMobile = window.innerWidth < 640;
         const baseCount = isMobile
-          ? Math.min(13, Math.max(8, Math.floor(window.innerWidth / 38)))
-          : Math.min(24, Math.max(12, Math.floor(window.innerWidth / 65)));
+          ? Math.min(22, Math.max(15, Math.floor(window.innerWidth / 22)))
+          : Math.min(42, Math.max(26, Math.floor(window.innerWidth / 38)));
         for (let i = 0; i < baseCount; i++) {
           petals.push(createPetal(Math.random() * canvasCssW, Math.random() * canvasCssH, false));
+        }
+        const bCount = isMobile ? 4 : 6;
+        for (let i = 0; i < bCount; i++) {
+          butterflies.push(createButterfly(i, bCount));
         }
       }
 
@@ -3031,13 +3119,74 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rot);
+        const flipScale = 0.45 + 0.55 * Math.abs(Math.cos(p.tiltPhase));
+        ctx.scale(flipScale, 1);
         ctx.globalAlpha = Math.max(0, p.alpha);
         ctx.fillStyle = p.color;
         ctx.beginPath();
+        // Tulip-petal teardrop silhouette
         ctx.moveTo(0, -p.size);
-        ctx.bezierCurveTo(p.size * 0.85, -p.size * 0.4, p.size * 0.75, p.size * 0.75, 0, p.size);
-        ctx.bezierCurveTo(-p.size * 0.75, p.size * 0.75, -p.size * 0.85, -p.size * 0.4, 0, -p.size);
+        ctx.bezierCurveTo(p.size * 0.88, -p.size * 0.42, p.size * 0.72, p.size * 0.72, 0, p.size);
+        ctx.bezierCurveTo(-p.size * 0.72, p.size * 0.72, -p.size * 0.88, -p.size * 0.42, 0, -p.size);
         ctx.fill();
+        // Subtle sunlit inner highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.32)';
+        ctx.beginPath();
+        ctx.ellipse(-p.size * 0.16, -p.size * 0.12, p.size * 0.18, p.size * 0.45, -0.15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawButterfly(b) {
+        const flap = 0.26 + 0.74 * Math.abs(Math.sin(b.wingPhase));
+        const s = b.size;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.angle + Math.PI / 2);
+        ctx.globalAlpha = 0.86;
+
+        // Left & right upper wings
+        ctx.save();
+        ctx.scale(flap, 1);
+        ctx.fillStyle = b.palette.upper;
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.1);
+        ctx.bezierCurveTo(-s * 1.15, -s * 1.15, -s * 1.65, s * 0.1, -s * 0.35, s * 0.35);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = b.palette.lower;
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.1);
+        ctx.bezierCurveTo(s * 1.15, -s * 1.15, s * 1.65, s * 0.1, s * 0.35, s * 0.35);
+        ctx.closePath();
+        ctx.fill();
+
+        // Lower wings
+        ctx.fillStyle = b.palette.accent;
+        ctx.globalAlpha = 0.72;
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.15);
+        ctx.bezierCurveTo(-s * 0.95, s * 0.25, -s * 0.9, s * 1.15, -s * 0.12, s * 0.85);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.15);
+        ctx.bezierCurveTo(s * 0.95, s * 0.25, s * 0.9, s * 1.15, s * 0.12, s * 0.85);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Delicate body
+        ctx.strokeStyle = '#6c4954';
+        ctx.lineWidth = 1.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.45);
+        ctx.lineTo(0, s * 0.65);
+        ctx.stroke();
+
         ctx.restore();
       }
 
@@ -3047,10 +3196,13 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
           return;
         }
         ctx.clearRect(0, 0, canvasCssW, canvasCssH);
+
+        // 1. Falling tulip petals
         for (let i = petals.length - 1; i >= 0; i--) {
           const p = petals[i];
           p.swayPhase += p.swaySpeed;
-          p.x += p.vx + Math.sin(p.swayPhase) * (p.burst ? 0.25 : 0.45);
+          p.tiltPhase += p.tiltSpeed;
+          p.x += p.vx + Math.sin(p.swayPhase) * (p.burst ? 0.28 : 0.62);
           p.vy += p.gravity;
           p.y += p.vy;
           p.rot += p.vRot;
@@ -3061,21 +3213,80 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
               petals.splice(i, 1);
               continue;
             }
-          } else if (p.y > canvasCssH + 24) {
-            p.y = -20;
+          } else if (p.y > canvasCssH + 26) {
+            p.y = -24;
             p.x = Math.random() * canvasCssW;
             const colors = getThemePetalColors();
             p.color = colors[Math.floor(Math.random() * colors.length)];
+          } else if (p.x < -30) {
+            p.x = canvasCssW + 20;
+          } else if (p.x > canvasCssW + 30) {
+            p.x = -20;
           }
           drawPetal(p);
         }
+
+        // 2. Soft golden sparkle trail behind butterflies
+        for (let i = sparkles.length - 1; i >= 0; i--) {
+          const sp = sparkles[i];
+          sp.y += 0.22;
+          sp.alpha -= 0.022;
+          if (sp.alpha <= 0) {
+            sparkles.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.globalAlpha = sp.alpha;
+          ctx.fillStyle = sp.color;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, sp.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // 3. Orbiting butterflies gliding gracefully around the screen
+        for (let i = 0; i < butterflies.length; i++) {
+          const b = butterflies[i];
+          const prevX = b.x;
+          const prevY = b.y;
+          b.phase += b.speedX;
+          b.phaseY += b.speedY;
+          b.wingPhase += b.wingSpeed;
+          b.x = b.cx + Math.cos(b.phase) * b.rx + Math.sin(b.phaseY * 0.7) * 28;
+          b.y = b.cy + Math.sin(b.phaseY) * b.ry + Math.cos(b.phase * 1.3) * 22;
+
+          const dx = b.x - prevX;
+          const dy = b.y - prevY;
+          if (Math.hypot(dx, dy) > 0.05) {
+            const targetAngle = Math.atan2(dy, dx);
+            let diff = targetAngle - b.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            b.angle += diff * 0.15;
+          }
+
+          b.sparkleTick++;
+          if (b.sparkleTick >= 14 && sparkles.length < 36) {
+            b.sparkleTick = 0;
+            sparkles.push({
+              x: b.x + (Math.random() - 0.5) * 6,
+              y: b.y + (Math.random() - 0.5) * 6,
+              r: 1.4 + Math.random() * 1.5,
+              alpha: 0.65,
+              color: Math.random() > 0.5 ? '#f7cf78' : b.palette.lower
+            });
+          }
+
+          drawButterfly(b);
+        }
+
         animId = requestAnimationFrame(tickPetals);
       }
 
       let resizeTimer = null;
       window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(resizeCanvas, 120);
+        resizeTimer = setTimeout(() => { resizeCanvas(); initPetals(); }, 150);
       });
       window.addEventListener('orientationchange', () => {
         setTimeout(resizeCanvas, 200);
@@ -3148,6 +3359,46 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
           console.error('Supabase sync error:', err);
           updateSyncBadge('error');
         }
+      }
+
+      // ================== ADMIN DELETE MODE TOGGLE ==================
+      const adminModeBtn = document.getElementById('admin-mode-btn');
+      const adminModeLabel = document.getElementById('admin-mode-label');
+
+      function updateAdminBtnUI() {
+        if (!adminModeBtn || !adminModeLabel) return;
+        if (isAdminMode()) {
+          adminModeBtn.className = 'inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-[11px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors';
+          adminModeBtn.firstElementChild.textContent = '🔓';
+          adminModeLabel.textContent = 'Đang bật Quản trị (Nhấn để tắt)';
+        } else {
+          adminModeBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] text-stone-400 hover:text-stone-600 bg-white/60 hover:bg-white border border-stone-200/70 transition-colors';
+          adminModeBtn.firstElementChild.textContent = '🔒';
+          adminModeLabel.textContent = 'Quản trị xóa ảnh';
+        }
+      }
+
+      if (adminModeBtn) {
+        updateAdminBtnUI();
+        adminModeBtn.addEventListener('click', () => {
+          if (isAdminMode()) {
+            adminPin = '';
+            try { sessionStorage.removeItem('co_huyen_admin_pin'); } catch (_) {}
+            updateAdminBtnUI();
+            renderAlbum();
+            renderClassWishes();
+            showToast('Đã tắt chế độ Quản trị.');
+            return;
+          }
+          const entered = prompt('Nhập mã PIN quản trị để hiện nút xóa ảnh & lời chúc:');
+          if (!entered || !entered.trim()) return;
+          adminPin = entered.trim();
+          try { sessionStorage.setItem('co_huyen_admin_pin', adminPin); } catch (_) {}
+          updateAdminBtnUI();
+          renderAlbum();
+          renderClassWishes();
+          showToast('Đã bật nút xóa Quản trị trên Album và Hộp thư!');
+        });
       }
 
       // ================== INIT ==================
