@@ -1316,27 +1316,34 @@
     Đã lưu!
   </div>
 
-  <!-- Floating Vinyl Turntable Player -->
-  <button id="vinyl-player" type="button" class="vinyl-widget" title="Thanh Xuân · Da LAB (Nhấn để tạm dừng/phát)" aria-label="Trình phát nhạc đĩa than Thanh Xuân">
-    <span class="vinyl-stage" aria-hidden="true">
-      <span class="vinyl-disc"></span>
-      <svg class="vinyl-arm" viewBox="0 0 20 30" fill="none">
-        <circle cx="14" cy="5" r="3.2" fill="#e7c7ce" stroke="#8e5766" stroke-width="1.2"/>
-        <path d="M14 7.5 L11.5 21 L8.5 25.5" stroke="#8e5766" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="8.5" cy="25.5" r="1.7" fill="#4a2c35"/>
-      </svg>
-      <span class="vinyl-notes">
-        <span class="vinyl-note vinyl-note-1">♪</span>
-        <span class="vinyl-note vinyl-note-2">♫</span>
+  <!-- Floating Vinyl Turntable Playlist Player -->
+  <div id="vinyl-player" class="vinyl-widget" role="region" aria-label="Trình phát nhạc đĩa than">
+    <button id="vinyl-toggle-btn" type="button" class="flex items-center gap-2.5 text-left focus:outline-none" title="Nhấn để phát / tạm dừng">
+      <span class="vinyl-stage" aria-hidden="true">
+        <span class="vinyl-disc"></span>
+        <svg class="vinyl-arm" viewBox="0 0 20 30" fill="none">
+          <circle cx="14" cy="5" r="3.2" fill="#e7c7ce" stroke="#8e5766" stroke-width="1.2"/>
+          <path d="M14 7.5 L11.5 21 L8.5 25.5" stroke="#8e5766" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="8.5" cy="25.5" r="1.7" fill="#4a2c35"/>
+        </svg>
+        <span class="vinyl-notes">
+          <span class="vinyl-note vinyl-note-1">♪</span>
+          <span class="vinyl-note vinyl-note-2">♫</span>
+        </span>
       </span>
-    </span>
-    <span class="text-left leading-tight pr-0.5">
-      <span class="block text-[11px] font-semibold text-stone-800">Thanh Xuân</span>
-      <span id="vinyl-status" class="block text-[10px] text-stone-500">Da LAB · Đang phát</span>
-    </span>
-  </button>
+      <span class="leading-tight max-w-[122px] sm:max-w-[148px]">
+        <span id="vinyl-title" class="block text-[11px] font-semibold text-stone-800 truncate">Thanh Xuân</span>
+        <span id="vinyl-status" class="block text-[10px] text-stone-500 truncate">Da LAB · Đang phát ♪</span>
+      </span>
+    </button>
+    <button id="vinyl-next-btn" type="button" title="Chuyển bài tiếp theo" aria-label="Chuyển bài tiếp theo" class="w-7 h-7 rounded-full flex items-center justify-center bg-rose-50/90 hover:bg-rose-100 text-[#b84c63] border border-rose-200/70 transition-all active:scale-90 shrink-0">
+      <svg viewBox="0 0 20 20" class="w-3.5 h-3.5" fill="currentColor">
+        <path d="M4.5 4.6a1 1 0 0 1 1.54-.84l6.2 4.14a1 1 0 0 1 0 1.66l-6.2 4.14a1 1 0 0 1-1.54-.83V4.6zm9.5-.1a.9.9 0 0 1 .9.9v9.2a.9.9 0 1 1-1.8 0V5.4a.9.9 0 0 1 .9-.9z"/>
+      </svg>
+    </button>
+  </div>
 
-  <audio id="bg-music" src="./nhac.mp3" preload="auto" loop playsinline></audio>
+  <audio id="bg-music" src="./nhac.mp3" preload="auto" playsinline></audio>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     (() => {
@@ -2568,18 +2575,44 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
       }
 
       const bgMusic = document.getElementById('bg-music');
+      const vinylToggleBtn = document.getElementById('vinyl-toggle-btn');
+      const vinylNextBtn = document.getElementById('vinyl-next-btn');
+      const vinylTitleEl = document.getElementById('vinyl-title');
+      const PLAYLIST = [
+        { src: './nhac.mp3', title: 'Thanh Xuân', artist: 'Da LAB' },
+        { src: './nhac2.mp3', title: 'có hẹn với thanh xuân', artist: 'MONSTAR' },
+        { src: './nhac3.mp3', title: 'Vùng ký ức', artist: 'Chillies' }
+      ];
+      let currentTrackIdx = 0;
       const TARGET_BGM_VOLUME = 0.55;
       let userPausedMusic = false;
       let bgmFadeRaf = null;
 
       function setMusicUI(playing) {
         musicPlaying = playing;
+        const track = PLAYLIST[currentTrackIdx] || PLAYLIST[0];
         if (vinylPlayerBtn) {
           vinylPlayerBtn.classList.toggle('is-playing', playing);
         }
-        if (vinylStatusEl) {
-          vinylStatusEl.textContent = playing ? 'Da LAB · Đang phát ♪' : 'Chạm để nghe nhạc';
+        if (vinylTitleEl) {
+          vinylTitleEl.textContent = track.title;
         }
+        if (vinylStatusEl) {
+          vinylStatusEl.textContent = playing
+            ? `${track.artist} · ${currentTrackIdx + 1}/${PLAYLIST.length} ♪`
+            : `${track.artist} · Chạm để phát`;
+        }
+      }
+
+      async function playTrackAt(idx, autoFade = false) {
+        if (!bgMusic) return;
+        currentTrackIdx = (idx + PLAYLIST.length) % PLAYLIST.length;
+        const track = PLAYLIST[currentTrackIdx];
+        userPausedMusic = false;
+        bgMusic.src = track.src;
+        bgMusic.load();
+        setMusicUI(true);
+        await startBgMusicSmooth(autoFade);
       }
 
       function fadeAudioTo(targetVol, durationMs = 1200, onDone = null) {
@@ -2629,16 +2662,35 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         });
       }
 
-      vinylPlayerBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        unlockMobileAudio();
-        if (musicPlaying) {
-          pauseBgMusicSmooth(true);
-        } else {
-          userPausedMusic = false;
-          startBgMusicSmooth(false);
-        }
-      });
+      if (vinylToggleBtn) {
+        vinylToggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          unlockMobileAudio();
+          if (musicPlaying) {
+            pauseBgMusicSmooth(true);
+          } else {
+            userPausedMusic = false;
+            startBgMusicSmooth(false);
+          }
+        });
+      }
+
+      if (vinylNextBtn) {
+        vinylNextBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          unlockMobileAudio();
+          removeFirstInteractionListeners();
+          playTrackAt(currentTrackIdx + 1, false);
+        });
+      }
+
+      if (bgMusic) {
+        bgMusic.addEventListener('ended', () => {
+          if (!userPausedMusic) {
+            playTrackAt(currentTrackIdx + 1, true);
+          }
+        });
+      }
 
       // Tự động phát nhạc mượt khi vào trang; nếu trình duyệt chặn autoplay thì tự bật ngay lần chạm đầu tiên
       function removeFirstInteractionListeners() {
