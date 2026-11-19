@@ -1141,6 +1141,7 @@
     Đã lưu!
   </div>
 
+  <audio id="bg-music" src="./nhac.mp3" preload="auto" loop playsinline></audio>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     (() => {
@@ -2371,33 +2372,125 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         } catch (_) {}
       }
 
-      musicToggleBtn.addEventListener('click', () => {
-        musicPlaying = !musicPlaying;
-        if (musicPlaying) {
-          unlockMobileAudio();
+      const bgMusic = document.getElementById('bg-music');
+      const TARGET_BGM_VOLUME = 0.55;
+      let userPausedMusic = false;
+      let bgmFadeRaf = null;
+
+      function setMusicUI(playing) {
+        musicPlaying = playing;
+        if (playing) {
           musicToggleBtn.classList.add('music-playing', 'ring-2', 'ring-rose-200');
-          musicLabel.textContent = 'Đang phát nhạc';
-          playNextBalladStep();
-          clearInterval(musicInterval);
-          musicInterval = setInterval(() => {
-            if (!musicPlaying || document.hidden) return;
-            playNextBalladStep();
-          }, 560);
+          musicLabel.textContent = 'Đang phát: Thanh Xuân';
         } else {
-          clearInterval(musicInterval);
           musicToggleBtn.classList.remove('music-playing', 'ring-2', 'ring-rose-200');
-          musicLabel.textContent = 'Bật nhạc nền nhẹ';
+          musicLabel.textContent = 'Bật nhạc nền';
+        }
+      }
+
+      function fadeAudioTo(targetVol, durationMs = 1200, onDone = null) {
+        if (!bgMusic) return;
+        if (bgmFadeRaf) cancelAnimationFrame(bgmFadeRaf);
+        const startVol = bgMusic.volume;
+        const startTime = performance.now();
+        function step(now) {
+          const t = Math.min(1, (now - startTime) / durationMs);
+          const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+          try {
+            bgMusic.volume = Math.max(0, Math.min(1, startVol + (targetVol - startVol) * eased));
+          } catch (_) {}
+          if (t < 1) {
+            bgmFadeRaf = requestAnimationFrame(step);
+          } else {
+            bgmFadeRaf = null;
+            if (typeof onDone === 'function') onDone();
+          }
+        }
+        bgmFadeRaf = requestAnimationFrame(step);
+      }
+
+      async function startBgMusicSmooth(isAuto = false) {
+        if (!bgMusic) return false;
+        if (isAuto && userPausedMusic) return false;
+        try {
+          if (bgMusic.paused) {
+            bgMusic.volume = 0.02;
+            await bgMusic.play();
+          }
+          setMusicUI(true);
+          fadeAudioTo(TARGET_BGM_VOLUME, isAuto ? 1500 : 800);
+          return true;
+        } catch (_) {
+          setMusicUI(false);
+          return false;
+        }
+      }
+
+      function pauseBgMusicSmooth(manual = false) {
+        if (manual) userPausedMusic = true;
+        if (!bgMusic) return;
+        setMusicUI(false);
+        fadeAudioTo(0, 420, () => {
+          if (!musicPlaying) bgMusic.pause();
+        });
+      }
+
+      musicToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        unlockMobileAudio();
+        if (musicPlaying) {
+          pauseBgMusicSmooth(true);
+        } else {
+          userPausedMusic = false;
+          startBgMusicSmooth(false);
         }
       });
 
+      // Tự động phát nhạc mượt khi vào trang; nếu trình duyệt chặn autoplay thì tự bật ngay lần chạm đầu tiên
+      function removeFirstInteractionListeners() {
+        ['pointerdown', 'touchstart', 'click', 'keydown'].forEach((evt) => {
+          window.removeEventListener(evt, onFirstInteraction, true);
+        });
+      }
+
+      async function onFirstInteraction(e) {
+        if (userPausedMusic || musicPlaying) {
+          removeFirstInteractionListeners();
+          return;
+        }
+        if (e && e.target && e.target.closest && e.target.closest('#music-toggle')) {
+          removeFirstInteractionListeners();
+          return;
+        }
+        const ok = await startBgMusicSmooth(true);
+        if (ok) removeFirstInteractionListeners();
+      }
+
+      ['pointerdown', 'touchstart', 'click', 'keydown'].forEach((evt) => {
+        window.addEventListener(evt, onFirstInteraction, { capture: true, passive: true });
+      });
+
+      startBgMusicSmooth(true).then((ok) => {
+        if (ok) removeFirstInteractionListeners();
+      });
+
       document.addEventListener('visibilitychange', () => {
-        if (!audioCtx) return;
         if (document.hidden) {
-          if (audioCtx.state === 'running') {
+          if (bgMusic && !bgMusic.paused) {
+            fadeAudioTo(0, 300, () => {
+              if (document.hidden) bgMusic.pause();
+            });
+          }
+          if (audioCtx && audioCtx.state === 'running') {
             audioCtx.suspend().catch(() => {});
           }
-        } else if (musicPlaying) {
-          audioCtx.resume().catch(() => {});
+        } else {
+          if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(() => {});
+          }
+          if (musicPlaying && !userPausedMusic && bgMusic && bgMusic.paused) {
+            startBgMusicSmooth(true);
+          }
         }
       });
 
