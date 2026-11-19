@@ -1141,6 +1141,7 @@
     Đã lưu!
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     (() => {
       // ================== HEARTFELT OPENING LETTER FOR CÔ VÕ THỊ THU HUYỀN ==================
@@ -1158,13 +1159,21 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         sender: 'Tập thể học trò cũ của cô'
       };
 
-      // ================== CẤU HÌNH ĐỒNG BỘ TRỰC TUYẾN (FIREBASE REALTIME DATABASE) ==================
-      // Dán URL Realtime Database từ Firebase Console vào dòng dưới đây để cả lớp cùng thấy thư & ảnh album:
-      // Ví dụ: 'https://tri-an-co-huyen-default-rtdb.asia-southeast1.firebasedatabase.app'
-      const FIREBASE_DB_URL = '';
+      // ================== CẤU HÌNH ĐỒNG BỘ TRỰC TUYẾN (SUPABASE) ==================
+      // Dán Project URL và anon/publishable key từ Supabase (Project Settings -> API) vào 2 dòng dưới đây:
+      // Ví dụ URL: 'https://abcdefghijkl.supabase.co'
+      const SUPABASE_URL = 'https://gqcagwwwpycwarozadfz.supabase.co';
+      const SUPABASE_ANON_KEY = 'sb_publishable_GGreILt2fzGRRYHCrw95Hg_V8txJVIB';
 
-      const DB_BASE = FIREBASE_DB_URL.trim().replace(/\/+$/, '');
-      const CLOUD_ENABLED = /^https:\/\//.test(DB_BASE);
+      const SB_URL = SUPABASE_URL.trim().replace(/\/+$/, '');
+      const SB_KEY = SUPABASE_ANON_KEY.trim();
+      const CLOUD_ENABLED = Boolean(
+        /^https:\/\//.test(SB_URL) &&
+        SB_KEY.length > 20 &&
+        window.supabase &&
+        typeof window.supabase.createClient === 'function'
+      );
+      const db = CLOUD_ENABLED ? window.supabase.createClient(SB_URL, SB_KEY) : null;
 
       const STORAGE_KEYS = {
         letter: 'co_huyen_2011_letter_v2',
@@ -1172,21 +1181,23 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         bouquet: 'co_huyen_2011_bouquet_v2',
         albumExtra: 'co_huyen_2011_album_extra_v1',
         heartedIds: 'co_huyen_2011_hearted_ids_v1',
-        myAlbumIds: 'co_huyen_2011_my_album_ids_v1'
+        myAlbumIds: 'co_huyen_2011_my_album_ids_v1',
+        myWishIds: 'co_huyen_2011_my_wish_ids_v1'
       };
 
       let state = {
         theme: 'blush',
         isOpen: false,
         letter: { ...DEFAULT_LETTER },
-        wishes: [], // Synced with Firebase when CLOUD_ENABLED, otherwise saved locally
-        extraAlbum: [], // Classmate-uploaded memory photos
+        wishes: [], // Đồng bộ với Supabase khi CLOUD_ENABLED, ngược lại lưu cục bộ
+        extraAlbum: [], // Ảnh kỷ niệm lớp gửi thêm
         selectedColor: '#e88fa1',
         pendingPhotoDataUrl: '',
         pendingAlbumPhotoUrl: '',
         bouquetCount: 20,
         heartedIds: {},
-        myAlbumIds: {}
+        myAlbumIds: {},
+        myWishIds: {}
       };
 
       try {
@@ -1224,6 +1235,11 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         if (savedMyAlbum) {
           const parsedM = JSON.parse(savedMyAlbum);
           if (parsedM && typeof parsedM === 'object') state.myAlbumIds = parsedM;
+        }
+        const savedMyWishes = localStorage.getItem(STORAGE_KEYS.myWishIds);
+        if (savedMyWishes) {
+          const parsedW = JSON.parse(savedMyWishes);
+          if (parsedW && typeof parsedW === 'object') state.myWishIds = parsedW;
         }
       } catch (_) {}
 
@@ -1522,14 +1538,30 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         }
       }
 
-      async function cloudRequest(path, options = {}) {
-        if (!CLOUD_ENABLED) return null;
-        const res = await fetch(`${DB_BASE}${path}`, {
-          headers: { 'Content-Type': 'application/json' },
-          ...options
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
+      function generateDeleteToken() {
+        return 'tk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+      }
+
+      async function dataUrlToBlob(dataUrl) {
+        const res = await fetch(dataUrl);
+        return res.blob();
+      }
+
+      async function uploadImageToSupabase(dataUrl, folder = 'uploads') {
+        if (!CLOUD_ENABLED || !db || !dataUrl) return dataUrl;
+        try {
+          const blob = await dataUrlToBlob(dataUrl);
+          const filePath = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+          const { error: uploadError } = await db.storage
+            .from('memories')
+            .upload(filePath, blob, { contentType: 'image/jpeg', upsert: false });
+          if (uploadError) throw uploadError;
+          const { data } = db.storage.from('memories').getPublicUrl(filePath);
+          if (data && data.publicUrl) return data.publicUrl;
+        } catch (_) {
+          // Nếu chưa tạo Storage bucket 'memories', tự động lưu trực tiếp ảnh đã nén để không bị lỗi
+        }
+        return dataUrl;
       }
 
       function compressImageFile(file, maxDim = 900, quality = 0.76) {
@@ -1580,13 +1612,14 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         playWarmPianoNote(587.33, 0.045, 1.4);
         setTimeout(() => playWarmPianoNote(739.99, 0.045, 1.5), 90);
 
-        if (CLOUD_ENABLED) {
+        if (CLOUD_ENABLED && db) {
           try {
-            const remoteVal = await cloudRequest('/bouquet.json');
-            const nextVal = Math.max(state.bouquetCount, (typeof remoteVal === 'number' ? remoteVal : 20) + 1);
-            state.bouquetCount = nextVal;
-            bouquetCountEl.textContent = String(nextVal);
-            await cloudRequest('/bouquet.json', { method: 'PUT', body: JSON.stringify(nextVal) });
+            const { data: newCount, error } = await db.rpc('increment_tulips');
+            if (!error && typeof newCount === 'number' && !Number.isNaN(newCount)) {
+              state.bouquetCount = Math.max(state.bouquetCount, newCount);
+              bouquetCountEl.textContent = String(state.bouquetCount);
+              try { localStorage.setItem(STORAGE_KEYS.bouquet, String(state.bouquetCount)); } catch (_) {}
+            }
           } catch (_) {}
         }
       });
@@ -1725,7 +1758,7 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
                     <span>${w.likes}</span>
                   </button>
 
-                  <button type="button" data-delete-id="${w.id}" class="text-stone-400 hover:text-stone-600 transition-colors" title="Xóa bức thư này">Xóa</button>
+                  ${(!CLOUD_ENABLED || state.myWishIds[w.id]) ? `<button type="button" data-delete-id="${w.id}" class="text-stone-400 hover:text-stone-600 transition-colors" title="Xóa bức thư bạn vừa gửi">Xóa</button>` : '<span></span>'}
                 </div>
               </article>
             `;
@@ -1759,12 +1792,13 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         const heartBtn = e.target.closest('[data-heart-id]');
         if (heartBtn) {
           const id = heartBtn.getAttribute('data-heart-id');
-          let updatedLikes = null;
+          let delta = 0;
           state.wishes = state.wishes.map((w) => {
             if (w.id !== id) return w;
             const hearted = !w.hearted;
+            delta = hearted ? 1 : -1;
             state.heartedIds[id] = hearted;
-            updatedLikes = hearted ? (w.likes || 0) + 1 : Math.max(0, (w.likes || 0) - 1);
+            const updatedLikes = hearted ? (w.likes || 0) + 1 : Math.max(0, (w.likes || 0) - 1);
             return { ...w, hearted, likes: updatedLikes };
           });
           try { localStorage.setItem(STORAGE_KEYS.heartedIds, JSON.stringify(state.heartedIds)); } catch (_) {}
@@ -1772,11 +1806,8 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
           renderClassWishes();
           const rect = heartBtn.getBoundingClientRect();
           burstPetals(rect.left + rect.width / 2, rect.top, 6);
-          if (CLOUD_ENABLED && updatedLikes !== null) {
-            cloudRequest(`/wishes/${encodeURIComponent(id)}.json`, {
-              method: 'PATCH',
-              body: JSON.stringify({ likes: updatedLikes })
-            }).catch(() => {});
+          if (CLOUD_ENABLED && db && delta !== 0 && !Number.isNaN(Number(id))) {
+            db.rpc('toggle_wish_like', { p_wish_id: Number(id), p_delta: delta }).catch(() => {});
           }
           return;
         }
@@ -1784,12 +1815,15 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         const delBtn = e.target.closest('[data-delete-id]');
         if (delBtn) {
           const id = delBtn.getAttribute('data-delete-id');
+          const token = typeof state.myWishIds[id] === 'string' ? state.myWishIds[id] : '';
           state.wishes = state.wishes.filter((w) => w.id !== id);
+          delete state.myWishIds[id];
+          try { localStorage.setItem(STORAGE_KEYS.myWishIds, JSON.stringify(state.myWishIds)); } catch (_) {}
           saveWishesSafe();
           renderClassWishes();
           showToast('Đã xóa bức thư.');
-          if (CLOUD_ENABLED) {
-            cloudRequest(`/wishes/${encodeURIComponent(id)}.json`, { method: 'DELETE' }).catch(() => {});
+          if (CLOUD_ENABLED && db && token && !Number.isNaN(Number(id))) {
+            db.rpc('delete_own_wish', { p_wish_id: Number(id), p_token: token }).catch(() => {});
           }
         }
       });
@@ -1932,14 +1966,15 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
         if (delBtn) {
           e.stopPropagation();
           const id = delBtn.getAttribute('data-delete-album-id');
+          const token = typeof state.myAlbumIds[id] === 'string' ? state.myAlbumIds[id] : '';
           state.extraAlbum = state.extraAlbum.filter((item) => item.id !== id);
           delete state.myAlbumIds[id];
           try { localStorage.setItem(STORAGE_KEYS.myAlbumIds, JSON.stringify(state.myAlbumIds)); } catch (_) {}
           saveExtraAlbumSafe();
           renderAlbum();
           showToast('Đã xóa ảnh khỏi Album.');
-          if (CLOUD_ENABLED) {
-            cloudRequest(`/album/${encodeURIComponent(id)}.json`, { method: 'DELETE' }).catch(() => {});
+          if (CLOUD_ENABLED && db && token && !Number.isNaN(Number(id))) {
+            db.rpc('delete_own_album', { p_photo_id: Number(id), p_token: token }).catch(() => {});
           }
           return;
         }
@@ -2034,17 +2069,28 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
 
         try {
           let newId = 'alb_' + Date.now();
-          if (CLOUD_ENABLED) {
-            const res = await cloudRequest('/album.json', {
-              method: 'POST',
-              body: JSON.stringify(payload)
-            });
-            if (res && res.name) newId = res.name;
+          let finalSrc = payload.src;
+          const deleteToken = generateDeleteToken();
+
+          if (CLOUD_ENABLED && db) {
+            finalSrc = await uploadImageToSupabase(payload.src, 'album');
+            const { data, error } = await db
+              .from('album_photos')
+              .insert([{
+                src: finalSrc,
+                author,
+                caption,
+                delete_token: deleteToken
+              }])
+              .select('id, created_at')
+              .single();
+            if (error) throw error;
+            if (data && data.id !== undefined) newId = String(data.id);
           }
 
-          const newItem = { id: newId, ...payload };
+          const newItem = { id: newId, ...payload, src: finalSrc };
           state.extraAlbum = [newItem, ...state.extraAlbum];
-          state.myAlbumIds[newId] = true;
+          state.myAlbumIds[newId] = deleteToken;
           try { localStorage.setItem(STORAGE_KEYS.myAlbumIds, JSON.stringify(state.myAlbumIds)); } catch (_) {}
           saveExtraAlbumSafe();
           renderAlbum();
@@ -2129,18 +2175,38 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
 
         try {
           let newId = 'cw_' + Date.now();
-          if (CLOUD_ENABLED) {
-            const res = await cloudRequest('/wishes.json', {
-              method: 'POST',
-              body: JSON.stringify(payload)
-            });
-            if (res && res.name) newId = res.name;
+          let finalPhoto = payload.photo;
+          const deleteToken = generateDeleteToken();
+
+          if (CLOUD_ENABLED && db) {
+            if (payload.photo) {
+              finalPhoto = await uploadImageToSupabase(payload.photo, 'wishes');
+            }
+            const { data, error } = await db
+              .from('wishes')
+              .insert([{
+                sender,
+                title,
+                content,
+                photo: finalPhoto,
+                color: state.selectedColor,
+                likes: 1,
+                delete_token: deleteToken
+              }])
+              .select('id, created_at')
+              .single();
+            if (error) throw error;
+            if (data && data.id !== undefined) newId = String(data.id);
           }
 
           state.heartedIds[newId] = true;
-          try { localStorage.setItem(STORAGE_KEYS.heartedIds, JSON.stringify(state.heartedIds)); } catch (_) {}
+          state.myWishIds[newId] = deleteToken;
+          try {
+            localStorage.setItem(STORAGE_KEYS.heartedIds, JSON.stringify(state.heartedIds));
+            localStorage.setItem(STORAGE_KEYS.myWishIds, JSON.stringify(state.myWishIds));
+          } catch (_) {}
 
-          const newWish = { id: newId, ...payload, hearted: true };
+          const newWish = { id: newId, ...payload, photo: finalPhoto, hearted: true };
           state.wishes = [newWish, ...state.wishes];
           saveWishesSafe();
           renderClassWishes();
@@ -2461,60 +2527,64 @@ Thank you for being our guiding light and our warmest memory of high school, Ms.
 
       // ================== CLOUD SYNC LOADER & AUTO-POLL ==================
       async function syncFromCloud(silent = false) {
-        if (!CLOUD_ENABLED) {
+        if (!CLOUD_ENABLED || !db) {
           updateSyncBadge('local');
           return;
         }
         if (!silent) updateSyncBadge('syncing');
         try {
-          const [wishesObj, albumObj, bouquetVal] = await Promise.all([
-            cloudRequest('/wishes.json'),
-            cloudRequest('/album.json'),
-            cloudRequest('/bouquet.json')
+          const [wishesRes, albumRes, flowerRes] = await Promise.all([
+            db.from('wishes')
+              .select('id, sender, title, content, photo, color, likes, created_at')
+              .order('created_at', { ascending: false }),
+            db.from('album_photos')
+              .select('id, src, author, caption, created_at')
+              .order('created_at', { ascending: false }),
+            db.from('flower_stats')
+              .select('tulip_count')
+              .eq('id', 1)
+              .maybeSingle()
           ]);
 
-          if (wishesObj && typeof wishesObj === 'object') {
-            state.wishes = Object.entries(wishesObj)
-              .map(([id, val]) => ({
-                id,
-                sender: val.sender || 'Học trò cũ',
-                title: val.title || 'Lời chúc gửi cô Huyền',
-                content: val.content || '',
-                photo: val.photo || '',
-                color: val.color || '#e88fa1',
-                likes: typeof val.likes === 'number' ? val.likes : 1,
-                createdAt: val.createdAt || 0,
-                hearted: Boolean(state.heartedIds[id])
-              }))
-              .sort((a, b) => b.createdAt - a.createdAt);
-          } else {
-            state.wishes = [];
-          }
+          if (wishesRes.error) throw wishesRes.error;
+          if (albumRes.error) throw albumRes.error;
+          if (flowerRes.error) throw flowerRes.error;
 
-          if (albumObj && typeof albumObj === 'object') {
-            state.extraAlbum = Object.entries(albumObj)
-              .map(([id, val]) => ({
-                id,
-                src: val.src || '',
-                author: val.author || '',
-                caption: val.caption || '',
-                createdAt: val.createdAt || 0
-              }))
-              .filter((item) => Boolean(item.src))
-              .sort((a, b) => b.createdAt - a.createdAt);
-          } else {
-            state.extraAlbum = [];
-          }
+          state.wishes = (wishesRes.data || []).map((row) => {
+            const id = String(row.id);
+            return {
+              id,
+              sender: row.sender || 'Học trò cũ',
+              title: row.title || 'Lời chúc gửi cô Huyền',
+              content: row.content || '',
+              photo: row.photo || '',
+              color: row.color || '#e88fa1',
+              likes: typeof row.likes === 'number' ? row.likes : 1,
+              createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
+              hearted: Boolean(state.heartedIds[id])
+            };
+          });
 
-          if (typeof bouquetVal === 'number' && !Number.isNaN(bouquetVal)) {
-            state.bouquetCount = Math.max(0, bouquetVal);
+          state.extraAlbum = (albumRes.data || [])
+            .map((row) => ({
+              id: String(row.id),
+              src: row.src || '',
+              author: row.author || '',
+              caption: row.caption || '',
+              createdAt: row.created_at ? new Date(row.created_at).getTime() : 0
+            }))
+            .filter((item) => Boolean(item.src));
+
+          if (flowerRes.data && typeof flowerRes.data.tulip_count === 'number') {
+            state.bouquetCount = Math.max(0, flowerRes.data.tulip_count);
             bouquetCountEl.textContent = String(state.bouquetCount);
           }
 
           renderClassWishes();
           renderAlbum();
           updateSyncBadge('online');
-        } catch (_) {
+        } catch (err) {
+          console.error('Supabase sync error:', err);
           updateSyncBadge('error');
         }
       }
